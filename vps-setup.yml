@@ -1,0 +1,184 @@
+---
+- name: VPS Setup Playbook
+  hosts: vps
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Upgrade all packages
+      apt:
+        upgrade: dist
+        autoremove: yes
+
+    - name: Install common packages
+      apt:
+        name: "{{ common_packages }}"
+        state: present
+
+    - name: Set timezone
+      timezone:
+        name: "{{ timezone }}"
+
+    - name: Set hostname
+      hostname:
+        name: "{{ hostname }}"
+
+    - name: Create admin user
+      user:
+        name: "{{ admin_user }}"
+        groups: "{{ admin_groups }}"
+        shell: /bin/bash
+        append: yes
+        create_home: yes
+
+    - name: Set up authorized keys for admin user
+      authorized_key:
+        user: "{{ admin_user }}"
+        state: present
+        key: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+      ignore_errors: yes
+      tags: ssh-key
+
+    - name: Disable SSH password authentication
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?PasswordAuthentication"
+        line: "PasswordAuthentication no"
+      notify: restart ssh
+
+    - name: Disable root login via SSH
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?PermitRootLogin"
+        line: "PermitRootLogin no"
+      notify: restart ssh
+
+    - name: Install Docker prerequisites
+      apt:
+        name:
+          - ca-certificates
+          - curl
+        state: present
+        update_cache: yes
+
+    - name: Create Docker keyring directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Download Docker GPG key
+      get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Set permissions for Docker GPG key
+      file:
+        path: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Add Docker repository
+      shell: |
+        echo \
+        "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+        $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
+        tee /etc/apt/sources.list.d/docker.list > /dev/null
+      args:
+        creates: /etc/apt/sources.list.d/docker.list
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install Docker packages
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+      notify: enable docker service
+
+    - name: Add admin user to docker group
+      user:
+        name: "{{ admin_user }}"
+        groups: docker
+        append: yes
+
+    - name: Configure UFW
+      ufw:
+        state: enabled
+        policy: deny
+      when: enable_ufw
+
+    - name: Allow specified ports on UFW
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+      loop: "{{ allowed_ports }}"
+      when: enable_ufw
+
+    - name: Configure automatic security updates
+      apt:
+        name: unattended-upgrades
+        state: present
+
+    - name: Enable automatic security updates
+      copy:
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+          APT::Periodic::AutocleanInterval "7";
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        mode: 0644
+
+    - name: Set system-wide limits for Docker containers
+      copy:
+        content: |
+          # Increase max file handles
+          fs.file-max = 2097152
+          # Increase max number of processes
+          kernel.pid_max = 4194303
+        dest: /etc/sysctl.d/99-docker-limits.conf
+        mode: 0644
+      notify: apply sysctl settings
+
+    - name: Configure fail2ban
+      template:
+        src: templates/jail.local.j2
+        dest: /etc/fail2ban/jail.local
+      notify: restart fail2ban
+
+    - name: Allow admin user to use sudo without password
+      lineinfile:
+        path: /etc/sudoers.d/{{ admin_user }}
+        line: "{{ admin_user }} ALL=(ALL) NOPASSWD:ALL"
+        state: present
+        mode: 0440
+        create: yes
+        validate: "visudo -cf %s"
+
+  handlers:
+    - name: restart fail2ban
+      service:
+        name: fail2ban
+        state: restarted
+    - name: restart ssh
+      service:
+        name: ssh
+        state: restarted
+    - name: enable docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+    - name: apply sysctl settings
+      command: sysctl -p /etc/sysctl.d/99-docker-limits.conf

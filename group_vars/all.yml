@@ -1,0 +1,34 @@
+---
+# Server configuration
+timezone: UTC
+hostname: josemokeni
+
+# Security
+ssh_port: 22
+enable_ufw: true
+allowed_ports:
+  - "{{ ssh_port }}"
+  - 80
+  - 443
+
+# Users
+admin_user: admin
+admin_groups:
+  - sudo
+
+# Packages to install
+common_packages:
+  - htop
+  - vim
+  - curl
+  - git
+  - unzip
+  - fail2ban
+  - net-tools
+  - iotop
+  - ncdu
+  - tmux
+  - logrotate
+
+# Monitoring and performance tools
+enable_monitoring: true
