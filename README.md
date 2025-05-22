@@ -94,6 +94,27 @@ ansible --version
 - User management
 - Basic security configuration with UFW and fail2ban
 - Timezone and hostname configuration
+- Git configuration and SSH key generation for GitHub
+- Docker installation and configuration
+
+## Git and GitHub Setup
+
+The playbook will:
+
+1. Configure Git with your provided username and email
+2. Generate an SSH key for GitHub access
+3. Fetch the public key to your local machine for easy addition to GitHub
+4. Display the public key in the playbook output
+
+You can find the GitHub SSH public key in the `github_ssh_key.pub` file after running the playbook. Add this key to your GitHub account settings to enable SSH access.
+
+To customize Git configuration, modify these variables in `group_vars/all.yml`:
+
+```yaml
+git_user_name: "Your Name"
+git_user_email: "your.email@example.com"
+git_generate_ssh_key: true
+```
 
 ## Important Notes
 

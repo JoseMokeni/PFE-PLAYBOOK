@@ -166,6 +166,73 @@
         create: yes
         validate: "visudo -cf %s"
 
+    # Git configuration and SSH key tasks
+    - name: Configure Git globally for admin user
+      become: yes
+      become_user: "{{ admin_user }}"
+      git_config:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        scope: global
+      loop:
+        - { name: "user.name", value: "{{ git_user_name }}" }
+        - { name: "user.email", value: "{{ git_user_email }}" }
+        - { name: "core.editor", value: "vim" }
+        - { name: "init.defaultBranch", value: "main" }
+
+    - name: Create SSH directory for admin user
+      file:
+        path: "/home/{{ admin_user }}/.ssh"
+        state: directory
+        owner: "{{ admin_user }}"
+        group: "{{ admin_user }}"
+        mode: "0700"
+      when: git_generate_ssh_key
+
+    - name: Generate SSH key for GitHub
+      become: yes
+      become_user: "{{ admin_user }}"
+      openssh_keypair:
+        path: "/home/{{ admin_user }}/.ssh/id_github"
+        type: "{{ git_ssh_key_type }}"
+        size: "{{ git_ssh_key_bits }}"
+        comment: "{{ git_ssh_key_comment }}"
+        state: present
+      when: git_generate_ssh_key
+
+    - name: Add GitHub SSH config
+      become: yes
+      become_user: "{{ admin_user }}"
+      blockinfile:
+        path: "/home/{{ admin_user }}/.ssh/config"
+        block: |
+          Host github.com
+            HostName github.com
+            User git
+            IdentityFile ~/.ssh/id_github
+            IdentitiesOnly yes
+        create: yes
+        mode: "0600"
+      when: git_generate_ssh_key
+
+    - name: Fetch GitHub SSH public key to local machine
+      fetch:
+        src: "/home/{{ admin_user }}/.ssh/id_github.pub"
+        dest: "./github_ssh_key.pub"
+        flat: yes
+      when: git_generate_ssh_key
+
+    - name: Display GitHub SSH public key
+      command: "cat /home/{{ admin_user }}/.ssh/id_github.pub"
+      register: github_ssh_key
+      changed_when: false
+      when: git_generate_ssh_key
+
+    - name: Show GitHub SSH key
+      debug:
+        msg: "GitHub SSH key for adding to GitHub: {{ github_ssh_key.stdout }}"
+      when: git_generate_ssh_key
+
   handlers:
     - name: restart fail2ban
       service:
