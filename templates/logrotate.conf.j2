@@ -8,3 +8,16 @@
     copytruncate
     maxsize 50M
 }
+
+# fail2ban logs rotation
+/var/log/fail2ban.log {
+    weekly
+    rotate 4
+    compress
+    missingok
+    notifempty
+    delaycompress
+    postrotate
+        /bin/systemctl reload fail2ban || true
+    endscript
+}

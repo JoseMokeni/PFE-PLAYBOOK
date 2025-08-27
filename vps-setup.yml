@@ -40,7 +40,7 @@
       authorized_key:
         user: "{{ admin_user }}"
         state: present
-        key: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+        key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
       ignore_errors: yes
       tags: ssh-key
 
@@ -56,6 +56,28 @@
         path: /etc/ssh/sshd_config
         regexp: "^#?PermitRootLogin"
         line: "PermitRootLogin no"
+      notify: restart ssh
+
+    - name: Change SSH port
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?Port"
+        line: "Port {{ ssh_port }}"
+      notify: restart ssh
+      when: ssh_port != 22
+
+    - name: Disable SSH X11 forwarding
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?X11Forwarding"
+        line: "X11Forwarding no"
+      notify: restart ssh
+
+    - name: Set SSH max auth tries
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?MaxAuthTries"
+        line: "MaxAuthTries 3"
       notify: restart ssh
 
     - name: Install Docker prerequisites
@@ -157,6 +179,37 @@
         dest: /etc/fail2ban/jail.local
       notify: restart fail2ban
 
+    - name: Ensure fail2ban is started and enabled
+      service:
+        name: fail2ban
+        state: started
+        enabled: yes
+
+    - name: Check fail2ban status
+      command: fail2ban-client status
+      register: fail2ban_status
+      changed_when: false
+      failed_when: false
+
+    - name: Display fail2ban status
+      debug:
+        var: fail2ban_status.stdout_lines
+      when: fail2ban_status.rc == 0
+
+    - name: Add task to unban IP if needed (manual intervention)
+      debug:
+        msg: |
+          If you get banned, you can unban your IP with:
+          sudo fail2ban-client set sshd unbanip YOUR_IP_ADDRESS
+          To check banned IPs: sudo fail2ban-client status sshd
+          To check all jails: sudo fail2ban-client status
+
+    - name: Configure logrotate for Docker and fail2ban
+      template:
+        src: templates/logrotate.conf.j2
+        dest: /etc/logrotate.d/docker-fail2ban
+        mode: 0644
+
     - name: Allow admin user to use sudo without password
       lineinfile:
         path: /etc/sudoers.d/{{ admin_user }}
@@ -193,7 +246,7 @@
       become: yes
       become_user: "{{ admin_user }}"
       openssh_keypair:
-        path: "/home/{{ admin_user }}/.ssh/id_github"
+        path: "/home/{{ admin_user }}/.ssh/id_{{ git_ssh_key_type }}"
         type: "{{ git_ssh_key_type }}"
         size: "{{ git_ssh_key_bits }}"
         comment: "{{ git_ssh_key_comment }}"
@@ -209,7 +262,7 @@
           Host github.com
             HostName github.com
             User git
-            IdentityFile ~/.ssh/id_github
+            IdentityFile ~/.ssh/id_{{ git_ssh_key_type }}
             IdentitiesOnly yes
         create: yes
         mode: "0600"
@@ -217,13 +270,13 @@
 
     - name: Fetch GitHub SSH public key to local machine
       fetch:
-        src: "/home/{{ admin_user }}/.ssh/id_github.pub"
+        src: "/home/{{ admin_user }}/.ssh/id_{{ git_ssh_key_type }}.pub"
         dest: "./github_ssh_key.pub"
         flat: yes
       when: git_generate_ssh_key
 
     - name: Display GitHub SSH public key
-      command: "cat /home/{{ admin_user }}/.ssh/id_github.pub"
+      command: "cat /home/{{ admin_user }}/.ssh/id_{{ git_ssh_key_type }}.pub"
       register: github_ssh_key
       changed_when: false
       when: git_generate_ssh_key

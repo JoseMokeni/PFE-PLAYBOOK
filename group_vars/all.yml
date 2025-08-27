@@ -1,6 +1,6 @@
 ---
 # Server configuration
-timezone: UTC
+timezone: Africa/Tunis
 hostname: josemokeni
 
 # Security
@@ -11,14 +11,20 @@ allowed_ports:
   - 80
   - 443
 
+# fail2ban configuration
+fail2ban_bantime: "1h"
+fail2ban_findtime: "15m"
+fail2ban_maxretry: 5
+fail2ban_ssh_maxretry: 5
+
 # Users
 admin_user: admin
 admin_groups:
   - sudo
 
 # Git configuration
-git_user_name: "{{ admin_user }}"
-git_user_email: "user@example.com"
+git_user_name: "Jose Mokeni"
+git_user_email: "jmmokeni@gmail.com"
 git_generate_ssh_key: true
 git_ssh_key_type: ed25519
 git_ssh_key_bits: 4096

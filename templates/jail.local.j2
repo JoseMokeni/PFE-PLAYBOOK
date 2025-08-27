@@ -1,11 +1,55 @@
 [DEFAULT]
-bantime = 1h
-findtime = 10m
-maxretry = 5
+# The IP will be banned for the specified time
+bantime = {{ fail2ban_bantime }}
+# Look for failures over the specified time window
+findtime = {{ fail2ban_findtime }}
+# Maximum number of retries before ban
+maxretry = {{ fail2ban_maxretry }}
+# Ban action - can be iptables, ufw, etc.
+banaction = ufw
+# Email notifications (optional)
+# destemail = admin@example.com
+# sender = fail2ban@example.com
+# mta = sendmail
 
 [sshd]
 enabled = true
 port = {{ ssh_port }}
 filter = sshd
 logpath = /var/log/auth.log
+# Retry count for SSH
+maxretry = {{ fail2ban_ssh_maxretry }}
+# Ban time for SSH
+bantime = {{ fail2ban_bantime }}
+# Time window to look for failures
+findtime = {{ fail2ban_findtime }}
+
+# Additional jails for common services
+[nginx-http-auth]
+enabled = false
+port = http,https
+logpath = /var/log/nginx/error.log
+
+[nginx-noscript]
+enabled = false
+port = http,https
+logpath = /var/log/nginx/access.log
+maxretry = 6
+
+[nginx-badbots]
+enabled = false
+port = http,https
+logpath = /var/log/nginx/access.log
+maxretry = 2
+
+[apache-auth]
+enabled = false
+port = http,https
+logpath = /var/log/apache*/*error.log
+maxretry = 6
+
+[docker-daemon]
+enabled = false
+port = 2375,2376
+logpath = /var/log/docker.log
 maxretry = 3

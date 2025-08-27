@@ -1,0 +1,69 @@
+---
+- name: fail2ban Management Playbook
+  hosts: vps
+  become: true
+  gather_facts: false
+
+  vars_prompt:
+    - name: action
+      prompt: "What action do you want to perform? (status/unban/restart)"
+      private: false
+      default: "status"
+
+    - name: ip_address
+      prompt: "IP address to unban (leave empty if not unbanning)"
+      private: false
+      default: ""
+
+  tasks:
+    - name: Check fail2ban status
+      command: fail2ban-client status
+      register: fail2ban_general_status
+      changed_when: false
+      when: action == "status"
+
+    - name: Display general fail2ban status
+      debug:
+        var: fail2ban_general_status.stdout_lines
+      when: action == "status"
+
+    - name: Check SSH jail status
+      command: fail2ban-client status sshd
+      register: fail2ban_ssh_status
+      changed_when: false
+      when: action == "status"
+
+    - name: Display SSH jail status
+      debug:
+        var: fail2ban_ssh_status.stdout_lines
+      when: action == "status"
+
+    - name: Unban IP address
+      command: "fail2ban-client set sshd unbanip {{ ip_address }}"
+      when: action == "unban" and ip_address != ""
+      register: unban_result
+
+    - name: Display unban result
+      debug:
+        var: unban_result.stdout
+      when: action == "unban" and ip_address != ""
+
+    - name: Restart fail2ban service
+      service:
+        name: fail2ban
+        state: restarted
+      when: action == "restart"
+
+    - name: Show usage instructions
+      debug:
+        msg: |
+          fail2ban Management Commands:
+          - Check status: ansible-playbook -i inventory.ini fail2ban-manage.yml (choose 'status')
+          - Unban IP: ansible-playbook -i inventory.ini fail2ban-manage.yml (choose 'unban' and provide IP)
+          - Restart service: ansible-playbook -i inventory.ini fail2ban-manage.yml (choose 'restart')
+
+          Manual commands on the server:
+          - sudo fail2ban-client status
+          - sudo fail2ban-client status sshd
+          - sudo fail2ban-client set sshd unbanip YOUR_IP
+          - sudo fail2ban-client reload
